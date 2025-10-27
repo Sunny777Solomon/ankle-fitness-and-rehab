@@ -1,7 +1,8 @@
 import streamlit as st
-from datetime import date
+from datetime import date # This line is fine for 'date'
+import datetime # <--- FIX: Added this crucial import
 from typing import Dict, Any, List
-import json # Used to stringify the log entry
+import json 
 
 # --- 1. Workout Data Structure ---
 
@@ -29,9 +30,9 @@ WORKOUT_DATA: Dict[str, Any] = {
                 'description': "Hopping: Focus on quick ground contact and elastic energy.",
                 'progression': [
                     {'name': "Double Leg Hops In Place", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Soft landing, minimal knee bend."},
-                    {'name': "Double Leg Hops Forward/Backward", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Short, quick jumps maintaining control."},
-                    {'name': "Double Leg Hops Side-to-Side", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Focus on controlled lateral movement."},
-                    {'name': "Single Leg Hops In Place (Each Leg)", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Requires stability and power."},
+                    {'name': "Double Leg Hops Forward/Backward", 'sets': 3, 'time': 30, 'unit': "s", 'detail": "Short, quick jumps maintaining control."},
+                    {'name': "Double Leg Hops Side-to-Side", 'sets': 3, 'time': 30, 'unit': "s", 'detail": "Focus on controlled lateral movement."},
+                    {'name': "Single Leg Hops In Place (Each Leg)", 'sets': 3, 'time': 30, 'unit': "s", 'detail": "Requires stability and power."},
                 ],
             },
             'B': {
@@ -104,7 +105,7 @@ WORKOUT_DATA: Dict[str, Any] = {
                 'description': "Highest level of challenge, relying entirely on somatosensory input.",
                 'progression': [
                     {'name': "Eyes Closed, Hard Ground (Each Leg)", 'sets': 3, 'time': 60, 'unit': "s", 'detail': "Touch down is a major error."},
-                    {'name': "Eyes Closed, Foam Pad (Each Leg)", 'sets': 3, 'time': 60, 'unit': "s", 'detail': "Eyes closed on an unstable surface."},
+                    {'name': "Eyes Closed, Foam Pad (Each Leg)", 'sets': 3, 'time': 60, 'unit': "s", 'detail": "Eyes closed on an unstable surface."},
                 ],
             },
         },
@@ -210,6 +211,7 @@ def log_workout_completion(module_key: str, option_key: str):
     """Logs the completed workout to the session state log."""
     log_entry = {
         'date': st.session_state.selected_date.isoformat(),
+        # FIX: Use datetime.datetime.now() since 'datetime' is now imported
         'time': datetime.datetime.now().strftime("%H:%M:%S"),
         'module': WORKOUT_DATA[module_key]['title'],
         'option': option_key,
@@ -236,7 +238,6 @@ def display_modules_view():
                 f"""
                 <div class="module-card">
                     <h3>{module['icon']} {module['title']}</h3>
-                    <button class="select-button" onclick="window.parent.document.querySelector('[data-testid=stFormSubmitButton]').click()" >Select</button>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -487,3 +488,43 @@ def main():
     # --- Sidebar for Calendar and History ---
     with st.sidebar:
         st.header("🗓️ Calendar & Log")
+
+        # Calendar Integration (using native st.date_input)
+        new_date = st.date_input("Select Workout Date", value=st.session_state.selected_date, key="date_picker")
+        if new_date != st.session_state.selected_date:
+            st.session_state.selected_date = new_date
+            # Automatically reset view when date changes to start fresh for that day
+            reset_app() 
+            st.rerun()
+
+        st.markdown("---")
+        st.subheader("Workout History")
+
+        if st.session_state.workout_log:
+            # Filter logs for the selected date
+            selected_date_logs = [
+                log for log in st.session_state.workout_log
+                if log['date'] == st.session_state.selected_date.isoformat()
+            ]
+
+            if selected_date_logs:
+                st.info(f"Workouts completed on **{st.session_state.selected_date.strftime('%b %d')}**:")
+                for log in selected_date_logs:
+                    st.caption(f"**{log['module']}** (Option {log['option']}) at {log['time']}")
+            else:
+                st.info(f"No workouts logged for {st.session_state.selected_date.strftime('%b %d')}.")
+        else:
+            st.info("No workouts logged yet!")
+
+    # --- Main Content Renderer ---
+    if st.session_state.view == 'modules':
+        display_modules_view()
+    elif st.session_state.view == 'options':
+        display_options_view()
+    elif st.session_state.view == 'workout':
+        display_workout_timer()
+    elif st.session_state.view == 'finished':
+        display_finished_view()
+
+if __name__ == "__main__":
+    main()
