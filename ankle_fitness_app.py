@@ -1,16 +1,16 @@
 import streamlit as st
-from datetime import date 
-import datetime # Corrected: Added this crucial import
-from typing import Dict, Any, List
+from datetime import date, datetime, timedelta # Updated imports for date/time handling
+from typing import Dict, Any, List, Optional
 import json 
 
-# --- 1. Workout Data Structure ---
+# --- 1. Workout Data Structure (Unchanged) ---
 
 WORKOUT_DATA: Dict[str, Any] = {
     'warmup': {
         'title': "Warmup",
         'icon': "🕰️",
         'options': {
+            # Warmup always uses option A in the combined routine
             'A': {
                 'title': "Standard Warmup",
                 'description': "Prepare your ankles with gentle movement.",
@@ -30,8 +30,7 @@ WORKOUT_DATA: Dict[str, Any] = {
                 'description': "Hopping: Focus on quick ground contact and elastic energy.",
                 'progression': [
                     {'name': "Double Leg Hops In Place", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Soft landing, minimal knee bend."},
-                    # FIX applied here: Changed 'detail' value from 'detail": "Short, quick jumps maintaining control.' to 'detail': "Short, quick jumps maintaining control."
-                    {'name': "Double Leg Hops Forward/Backward", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Short, quick jumps maintaining control."}, 
+                    {'name': "Double Leg Hops Forward/Backward", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Short, quick jumps maintaining control."},
                     {'name': "Double Leg Hops Side-to-Side", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Focus on controlled lateral movement."},
                     {'name': "Single Leg Hops In Place (Each Leg)", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Requires stability and power."},
                 ],
@@ -137,22 +136,27 @@ WORKOUT_DATA: Dict[str, Any] = {
     },
 }
 
+# Define the sequence of modules for a full workout session
+MODULE_SEQUENCE = ['warmup', 'plyometrics', 'lowerStrength', 'dynamicBalance', 'staticBalance', 'ankleStrength']
+
+
 # --- 2. State Management Functions ---
 
 def init_state():
     """Initializes or resets the session state variables."""
     if 'view' not in st.session_state:
-        st.session_state.view = 'modules'
-    if 'selected_module' not in st.session_state:
-        st.session_state.selected_module = None
-    if 'selected_option' not in st.session_state:
-        st.session_state.selected_option = None
+        st.session_state.view = 'schedule' # Default view is now 'schedule'
+    if 'current_workout_type' not in st.session_state:
+        st.session_state.current_workout_type = None # 'A' or 'B'
+    if 'current_module_index' not in st.session_state:
+        st.session_state.current_module_index = 0
     if 'current_exercise_index' not in st.session_state:
         st.session_state.current_exercise_index = 0
     if 'current_set' not in st.session_state:
         st.session_state.current_set = 1
     if 'workout_log' not in st.session_state:
-        st.session_state.workout_log = []
+        # Log stores completed sessions: [{'date': 'YYYY-MM-DD', 'type': 'A', 'time': 'HH:MM:SS'}, ...]
+        st.session_state.workout_log = [] 
     if 'selected_date' not in st.session_state:
         st.session_state.selected_date = date.today()
 
@@ -160,170 +164,227 @@ def set_view(view: str):
     """Sets the current application view."""
     st.session_state.view = view
 
-def select_module(key: str):
-    """Handles module selection and transition to the options view."""
-    st.session_state.selected_module = key
-    st.session_state.selected_option = None
-    st.session_state.current_exercise_index = 0
-    st.session_state.current_set = 1
-    if key == 'warmup':
-        # Warmup only has one option, go directly to workout
-        st.session_state.selected_option = 'A'
-        set_view('workout')
-    else:
-        set_view('options')
-
-def select_option(key: str):
-    """Handles option selection and transition to the workout timer view."""
-    st.session_state.selected_option = key
+def start_workout(workout_type: str):
+    """Initializes state for a new workout of type 'A' or 'B'."""
+    st.session_state.current_workout_type = workout_type
+    st.session_state.current_module_index = 0
     st.session_state.current_exercise_index = 0
     st.session_state.current_set = 1
     set_view('workout')
 
 def reset_app():
-    """Resets all relevant state for a fresh start."""
-    st.session_state.selected_module = None
-    st.session_state.selected_option = None
+    """Resets all relevant state for a fresh start, returning to schedule view."""
+    st.session_state.current_workout_type = None
+    st.session_state.current_module_index = 0
     st.session_state.current_exercise_index = 0
     st.session_state.current_set = 1
-    set_view('modules')
+    set_view('schedule')
 
 def complete_set():
-    """Logic for advancing sets and exercises."""
-    module_key = st.session_state.selected_module
-    option_key = st.session_state.selected_option
-    progression = WORKOUT_DATA[module_key]['options'][option_key]['progression']
-    current_idx = st.session_state.current_exercise_index
-    current_exercise = progression[current_idx]
+    """Logic for advancing sets and exercises in the full routine."""
+    workout_type = st.session_state.current_workout_type
+    current_mod_idx = st.session_state.current_module_index
+    current_ex_idx = st.session_state.current_exercise_index
+    current_mod_key = MODULE_SEQUENCE[current_mod_idx]
     
+    # Determine which progression list to use (Option A or B)
+    # Warmup always uses 'A', main modules use the selected workout_type ('A' or 'B')
+    option_key = 'A' if current_mod_key == 'warmup' else workout_type
+    
+    progression = WORKOUT_DATA[current_mod_key]['options'][option_key]['progression']
+    current_exercise = progression[current_ex_idx]
+
+    # 1. Advance the set
     if st.session_state.current_set < current_exercise['sets']:
-        # Advance to the next set
         st.session_state.current_set += 1
-    elif current_idx < len(progression) - 1:
-        # Advance to the next exercise
+    
+    # 2. Advance the exercise
+    elif current_ex_idx < len(progression) - 1:
         st.session_state.current_exercise_index += 1
         st.session_state.current_set = 1
+    
+    # 3. Advance the module
+    elif current_mod_idx < len(MODULE_SEQUENCE) - 1:
+        st.session_state.current_module_index += 1
+        st.session_state.current_exercise_index = 0
+        st.session_state.current_set = 1
+    
+    # 4. Finish the entire workout
     else:
-        # Workout Finished
-        log_workout_completion(module_key, option_key)
+        log_workout_completion(workout_type)
         set_view('finished')
 
-def log_workout_completion(module_key: str, option_key: str):
+def log_workout_completion(workout_type: str):
     """Logs the completed workout to the session state log."""
     log_entry = {
         'date': st.session_state.selected_date.isoformat(),
-        'time': datetime.datetime.now().strftime("%H:%M:%S"),
-        'module': WORKOUT_DATA[module_key]['title'],
-        'option': option_key,
-        'full_key': module_key,
+        'time': datetime.now().strftime("%H:%M:%S"),
+        'type': workout_type, # 'A' or 'B'
     }
     st.session_state.workout_log.append(log_entry)
 
 
-# --- 3. View Functions ---
+# --- 3. Scheduling and Enforcement Logic ---
 
-def display_modules_view():
-    """Displays the main module selection screen."""
-    st.title("💪 Ankle Fitness Flow")
-    st.markdown("Select a **module** to begin your ankle fitness routine for **{date}**.".format(date=st.session_state.selected_date.strftime("%A, %b %d")))
+def get_schedule_info(selected_date: date) -> Dict[str, Any]:
+    """
+    Determines if a workout is allowed on the selected date and which type (A or B) is required.
+    Enforces 3x/week and alternating A/B rules.
+    """
+    # Get the week number and year to check frequency
+    # .isocalendar() returns (year, week_number, weekday)
+    current_year, current_week, _ = selected_date.isocalendar()
+    
+    # Find all completed workouts within the current week
+    weekly_logs = [
+        log for log in st.session_state.workout_log
+        if datetime.fromisoformat(log['date']).date().isocalendar()[:2] == (current_year, current_week)
+    ]
+    
+    # Rule 1: Max 3 times per week
+    if len(weekly_logs) >= 3:
+        return {
+            'allowed': False,
+            'message': f"You have already completed 3 workouts this week (Week {current_week}). Rest is required!",
+            'type': None
+        }
 
-    cols = st.columns(2)
-    module_keys = list(WORKOUT_DATA.keys())
+    # Find the most recent completed workout ever, regardless of week
+    recent_logs = sorted(st.session_state.workout_log, key=lambda x: datetime.strptime(x['date'] + x['time'], '%Y-%m-%d%H:%M:%S'), reverse=True)
+    
+    last_completed_type = None
+    if recent_logs:
+        last_completed_type = recent_logs[0]['type']
+    
+    # Determine the required workout type for alternating schedule
+    if last_completed_type == 'A':
+        required_type = 'B'
+    elif last_completed_type == 'B':
+        required_type = 'A'
+    else:
+        # If no previous logs, default to Workout A
+        required_type = 'A'
 
-    for i, key in enumerate(module_keys):
-        module = WORKOUT_DATA[key]
-        with cols[i % 2]:
-            # Custom styled card using markdown
-            st.markdown(
-                f"""
-                <div class="module-card">
-                    <h3>{module['icon']} {module['title']}</h3>
-                </div>
-                """,
-                unsafe_allow_html=True
+    # Check if a workout is already logged for the selected date
+    for log in weekly_logs:
+        if log['date'] == selected_date.isoformat():
+            return {
+                'allowed': False,
+                'message': f"Workout **{log['type']}** already logged for this date.",
+                'type': None
+            }
+            
+    # Rule 2: Alternating rule is satisfied, and frequency is good.
+    return {
+        'allowed': True,
+        'message': f"Your next scheduled workout is **Workout {required_type}**.",
+        'type': required_type
+    }
+
+
+# --- 4. View Functions ---
+
+def display_schedule_view():
+    """Displays the main screen with schedule enforcement."""
+    st.title("🗓️ Ankle Fitness Scheduler")
+    st.markdown(f"Today's date is **{date.today().strftime('%A, %b %d, %Y')}**.")
+    st.markdown("Use the sidebar calendar to select the date you wish to log or start a workout.")
+    
+    schedule_info = get_schedule_info(st.session_state.selected_date)
+    required_type = schedule_info['type']
+    
+    st.markdown("---")
+    
+    if schedule_info['allowed']:
+        st.success(f"**SCHEDULED:** {schedule_info['message']}")
+        
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.header(f"Routine {required_type}")
+            st.markdown(f"**{WORKOUT_DATA['plyometrics']['options'][required_type]['title']}**")
+            st.markdown(f"**{WORKOUT_DATA['lowerStrength']['options'][required_type]['title']}**")
+            st.markdown(f"**{WORKOUT_DATA['dynamicBalance']['options'][required_type]['title']}**")
+            st.markdown(f"**{WORKOUT_DATA['staticBalance']['options'][required_type]['title']}**")
+            st.markdown(f"**{WORKOUT_DATA['ankleStrength']['options'][required_type]['title']}**")
+
+        with col2:
+            st.markdown("### Start Workout")
+            st.warning("This will start a full-session, alternating through all 6 modules.")
+            st.button(
+                f"Begin Workout {required_type}",
+                key="btn_start_scheduled_workout",
+                type="primary",
+                use_container_width=True,
+                on_click=start_workout,
+                args=(required_type,)
             )
-            # Use a hidden button or form to trigger the state change reliably
-            if st.button(f"Select {module['title']}", key=f"btn_select_{key}", use_container_width=True, help="Click to select this module."):
-                select_module(key)
 
-def display_options_view():
-    """Displays the option (A or B) selection screen."""
-    module_key = st.session_state.selected_module
-    if not module_key:
-        reset_app()
-        return
+    else:
+        st.error(f"**BLOCKED:** {schedule_info['message']}")
+        st.warning("The app enforces a maximum of 3 workouts per week and strict A/B alternation.")
 
-    module = WORKOUT_DATA[module_key]
-    st.title(f"Options for {module['icon']} {module['title']}")
-    st.markdown("Choose the **progression** that fits your current needs.")
-
-    st.button("← Back to Modules", on_click=reset_app)
-
-    cols = st.columns(2)
-    options = module['options']
-
-    for i, (option_key, option) in enumerate(options.items()):
-        with cols[i % 2]:
-            with st.container(border=True):
-                st.subheader(f"Option {option_key}: {option['title']}")
-                st.markdown(f"*{option['description']}*")
-                
-                # Progression details
-                st.markdown("**Progression Steps:**")
-                progression_list = []
-                for idx, exercise in enumerate(option['progression']):
-                    unit_display = exercise.get('reps', exercise.get('time'))
-                    unit_label = exercise['unit']
-                    progression_list.append(f"**{idx + 1}.** {exercise['name']} ({exercise['sets']}x {unit_display} {unit_label})")
-                
-                st.markdown("\n".join(progression_list))
-
-                st.button(
-                    f"Start Option {option_key}", 
-                    key=f"btn_start_option_{option_key}", 
-                    use_container_width=True,
-                    type="primary",
-                    on_click=select_option, 
-                    args=(option_key,)
-                )
 
 def display_workout_timer():
-    """Displays the interactive workout step-tracker."""
-    module_key = st.session_state.selected_module
-    option_key = st.session_state.selected_option
+    """Displays the interactive workout step-tracker for the full routine."""
+    workout_type = st.session_state.current_workout_type
+    current_mod_idx = st.session_state.current_module_index
+    current_ex_idx = st.session_state.current_exercise_index
+    current_set = st.session_state.current_set
 
-    if not module_key or not option_key:
+    if not workout_type or current_mod_idx >= len(MODULE_SEQUENCE):
         reset_app()
         return
 
-    progression = WORKOUT_DATA[module_key]['options'][option_key]['progression']
-    current_idx = st.session_state.current_exercise_index
-    current_set = st.session_state.current_set
-
-    # Check if workout is ongoing
-    if current_idx >= len(progression):
-        # Should not happen if complete_set calls log_workout_completion correctly, but serves as a safeguard
-        set_view('finished')
-        return
-
-    current_exercise = progression[current_idx]
+    # Determine current module and its progression
+    current_mod_key = MODULE_SEQUENCE[current_mod_idx]
+    is_warmup = (current_mod_key == 'warmup')
+    
+    # Warmup always uses 'A', main modules use the session's workout_type
+    option_key = 'A' if is_warmup else workout_type
+    
+    current_module = WORKOUT_DATA[current_mod_key]
+    progression = current_module['options'][option_key]['progression']
+    current_exercise = progression[current_ex_idx]
+    
     max_sets = current_exercise['sets']
     unit_display = current_exercise.get('reps', current_exercise.get('time'))
     unit_label = current_exercise['unit']
     
-    # Progress Bar
-    total_steps = sum(e['sets'] for e in progression)
-    completed_steps = sum(e['sets'] for e in progression[:current_idx]) + current_set - 1
-    progress_percentage = (completed_steps / total_steps)
-    st.progress(progress_percentage, text=f"Overall Progress: {int(progress_percentage * 100)}%")
+    # --- Progress Calculation ---
+    total_steps = 0
+    completed_steps = 0
+    
+    # Calculate total steps by iterating through all modules and exercises
+    for i, mod_key in enumerate(MODULE_SEQUENCE):
+        opt = 'A' if mod_key == 'warmup' else workout_type
+        mod_prog = WORKOUT_DATA[mod_key]['options'][opt]['progression']
+        
+        for ex in mod_prog:
+            total_steps += ex['sets']
+            
+            if i < current_mod_idx:
+                completed_steps += ex['sets']
+            elif i == current_mod_idx:
+                # Add completed sets for the current module
+                if ex == current_exercise:
+                    completed_steps += current_set - 1
+                    break
+                else:
+                    completed_steps += ex['sets']
 
-    st.header(f"{WORKOUT_DATA[module_key]['icon']} {WORKOUT_DATA[module_key]['title']}")
+    progress_percentage = (completed_steps / total_steps) if total_steps > 0 else 0
+
+    st.progress(progress_percentage, text=f"Total Session Progress: {int(progress_percentage * 100)}%")
+
+    st.header(f"Session {workout_type}: {current_module['icon']} {current_module['title']}")
+    st.subheader(f"Module {current_mod_idx + 1}/{len(MODULE_SEQUENCE)}")
 
     # Current Exercise Display
     st.markdown(
         f"""
         <div class="workout-display">
-            <p class="exercise-name">Exercise {current_idx + 1}/{len(progression)}</p>
+            <p class="exercise-name">Exercise {current_ex_idx + 1}/{len(progression)}</p>
             <h2>{current_exercise['name']}</h2>
             <div class="sets-reps-box">
                 <span class="set-counter">SET {current_set} / {max_sets}</span>
@@ -340,7 +401,7 @@ def display_workout_timer():
     
     with col_complete:
         st.button(
-            "✅ Set Complete", 
+            "✅ Set Complete (Advance)", 
             key="btn_complete_set", 
             type="primary", 
             use_container_width=True,
@@ -349,33 +410,34 @@ def display_workout_timer():
 
     with col_pause:
         st.button(
-            "❌ End Workout Early", 
+            "❌ End Session Early", 
             key="btn_end_early", 
             use_container_width=True,
             on_click=reset_app
         )
-        st.caption("_Returns to modules_")
+        st.caption("_Returns to schedule_")
 
 
 def display_finished_view():
     """Displays the workout completion screen."""
     st.balloons()
+    workout_type = st.session_state.current_workout_type
     st.title("🎉 Workout Complete!")
-    st.subheader(f"You finished your {WORKOUT_DATA[st.session_state.selected_module]['title']} routine for {st.session_state.selected_date.strftime('%A, %b %d')}.")
+    st.subheader(f"You finished **Workout {workout_type}** for {st.session_state.selected_date.strftime('%A, %b %d')}.")
     
-    st.success("Your workout has been logged! Check the 'Workout History' sidebar.")
+    st.success("Your workout has been logged! The next scheduled session will be the opposite type.")
     
     st.markdown("---")
     
     st.button(
-        "Start New Module", 
+        "Return to Schedule", 
         type="primary", 
         use_container_width=True, 
         on_click=reset_app
     )
 
 
-# --- 4. Streamlit App Layout and Styling ---
+# --- 5. Streamlit App Layout and Styling ---
 
 def custom_styling():
     """Injects custom CSS for a modern, flowing dark UI/UX."""
@@ -403,22 +465,6 @@ def custom_styling():
             }
             .stButton>button:hover {
                 box-shadow: 0 4px 6px -1px rgba(45, 212, 191, 0.4), 0 2px 4px -2px rgba(45, 212, 191, 0.4);
-            }
-            
-            /* Module Card Styling */
-            .module-card {
-                background-color: #374151; /* Card Background */
-                padding: 1.25rem;
-                border-radius: 0.75rem;
-                margin-bottom: 1rem;
-                border-left: 5px solid #2dd4bf;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            }
-            .module-card h3 {
-                margin-top: 0;
-                margin-bottom: 0.5rem;
-                color: #f9fafb;
-                font-size: 1.25rem;
             }
             
             /* Workout Display Styling */
@@ -460,15 +506,6 @@ def custom_styling():
                 font-style: italic;
                 margin-top: 1rem;
             }
-
-            /* Hide the redundant 'Select' buttons for card styling */
-            [key^='btn_select_'] {
-                visibility: hidden;
-                height: 0;
-                margin: 0;
-                padding: 0;
-            }
-
         </style>
     """, unsafe_allow_html=True)
 
@@ -476,8 +513,8 @@ def custom_styling():
 def main():
     """Main function to run the Streamlit application."""
     st.set_page_config(
-        page_title="Ankle Fitness App",
-        page_icon="🦶",
+        page_title="Ankle Fitness Scheduler",
+        page_icon="🗓️",
         layout="centered",
         initial_sidebar_state="expanded"
     )
@@ -487,40 +524,47 @@ def main():
     
     # --- Sidebar for Calendar and History ---
     with st.sidebar:
-        st.header("🗓️ Calendar & Log")
+        st.header("🗓️ Schedule & Log")
 
-        # Calendar Integration (using native st.date_input)
+        # Calendar Integration
         new_date = st.date_input("Select Workout Date", value=st.session_state.selected_date, key="date_picker")
         if new_date != st.session_state.selected_date:
             st.session_state.selected_date = new_date
             # Automatically reset view when date changes to start fresh for that day
             reset_app() 
             st.rerun()
-
+        
+        # Display frequency info for the current week
+        current_year, current_week, _ = st.session_state.selected_date.isocalendar()
+        weekly_logs = [
+            log for log in st.session_state.workout_log
+            if datetime.fromisoformat(log['date']).date().isocalendar()[:2] == (current_year, current_week)
+        ]
+        st.markdown(f"**Week {current_week} Progress:** {len(weekly_logs)}/3 Workouts Completed")
+        
         st.markdown("---")
         st.subheader("Workout History")
-
+        
         if st.session_state.workout_log:
-            # Filter logs for the selected date
-            selected_date_logs = [
-                log for log in st.session_state.workout_log
-                if log['date'] == st.session_state.selected_date.isoformat()
-            ]
-
-            if selected_date_logs:
-                st.info(f"Workouts completed on **{st.session_state.selected_date.strftime('%b %d')}**:")
-                for log in selected_date_logs:
-                    st.caption(f"**{log['module']}** (Option {log['option']}) at {log['time']}")
-            else:
-                st.info(f"No workouts logged for {st.session_state.selected_date.strftime('%b %d')}.")
+            # Sort all logs by date/time (most recent first)
+            sorted_logs = sorted(
+                st.session_state.workout_log, 
+                key=lambda x: datetime.strptime(x['date'] + x['time'], '%Y-%m-%d%H:%M:%S'), 
+                reverse=True
+            )
+            
+            st.info(f"Last **{len(sorted_logs)}** logged sessions:")
+            
+            for log in sorted_logs:
+                log_date = datetime.fromisoformat(log['date']).strftime('%b %d')
+                st.caption(f"**{log['type']}** on {log_date} at {log['time']}")
         else:
             st.info("No workouts logged yet!")
 
+
     # --- Main Content Renderer ---
-    if st.session_state.view == 'modules':
-        display_modules_view()
-    elif st.session_state.view == 'options':
-        display_options_view()
+    if st.session_state.view == 'schedule':
+        display_schedule_view()
     elif st.session_state.view == 'workout':
         display_workout_timer()
     elif st.session_state.view == 'finished':
