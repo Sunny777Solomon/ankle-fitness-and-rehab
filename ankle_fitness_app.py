@@ -1,6 +1,6 @@
 import streamlit as st
-from datetime import date # This line is fine for 'date'
-import datetime # <--- FIX: Added this crucial import
+from datetime import date 
+import datetime # Corrected: Added this crucial import
 from typing import Dict, Any, List
 import json 
 
@@ -30,9 +30,10 @@ WORKOUT_DATA: Dict[str, Any] = {
                 'description': "Hopping: Focus on quick ground contact and elastic energy.",
                 'progression': [
                     {'name': "Double Leg Hops In Place", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Soft landing, minimal knee bend."},
-                    {'name': "Double Leg Hops Forward/Backward", 'sets': 3, 'time': 30, 'unit': "s", 'detail": "Short, quick jumps maintaining control."},
-                    {'name': "Double Leg Hops Side-to-Side", 'sets': 3, 'time': 30, 'unit': "s", 'detail": "Focus on controlled lateral movement."},
-                    {'name': "Single Leg Hops In Place (Each Leg)", 'sets': 3, 'time': 30, 'unit': "s", 'detail": "Requires stability and power."},
+                    # FIX applied here: Changed 'detail' value from 'detail": "Short, quick jumps maintaining control.' to 'detail': "Short, quick jumps maintaining control."
+                    {'name': "Double Leg Hops Forward/Backward", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Short, quick jumps maintaining control."}, 
+                    {'name': "Double Leg Hops Side-to-Side", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Focus on controlled lateral movement."},
+                    {'name': "Single Leg Hops In Place (Each Leg)", 'sets': 3, 'time': 30, 'unit': "s", 'detail': "Requires stability and power."},
                 ],
             },
             'B': {
@@ -105,7 +106,7 @@ WORKOUT_DATA: Dict[str, Any] = {
                 'description': "Highest level of challenge, relying entirely on somatosensory input.",
                 'progression': [
                     {'name': "Eyes Closed, Hard Ground (Each Leg)", 'sets': 3, 'time': 60, 'unit': "s", 'detail': "Touch down is a major error."},
-                    {'name': "Eyes Closed, Foam Pad (Each Leg)", 'sets': 3, 'time': 60, 'unit': "s", 'detail": "Eyes closed on an unstable surface."},
+                    {'name': "Eyes Closed, Foam Pad (Each Leg)", 'sets': 3, 'time': 60, 'unit': "s", 'detail': "Eyes closed on an unstable surface."},
                 ],
             },
         },
@@ -211,7 +212,6 @@ def log_workout_completion(module_key: str, option_key: str):
     """Logs the completed workout to the session state log."""
     log_entry = {
         'date': st.session_state.selected_date.isoformat(),
-        # FIX: Use datetime.datetime.now() since 'datetime' is now imported
         'time': datetime.datetime.now().strftime("%H:%M:%S"),
         'module': WORKOUT_DATA[module_key]['title'],
         'option': option_key,
